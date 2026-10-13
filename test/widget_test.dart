@@ -11,20 +11,32 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:api_listview_demo/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('DayMate app builds', (WidgetTester tester) async {
+    await tester.pumpWidget(const DayMateApp());
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    expect(find.byType(DayMateApp), findsOneWidget);
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
+  testWidgets('wide screens use a phone-width layout and show tap banners', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1000, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const DayMateApp());
+
+    expect(tester.getSize(find.byType(Scaffold)).width, 480);
+
+    await tester.tap(find.text('Habits').last);
     await tester.pump();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Opened Daily Habits.'), findsOneWidget);
+
+    tester.view.physicalSize = const Size(390, 844);
+    await tester.pump();
+
+    expect(tester.getSize(find.byType(Scaffold)).width, 390);
   });
 }
