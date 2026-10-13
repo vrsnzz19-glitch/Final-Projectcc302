@@ -370,7 +370,7 @@ class _DayMateHomeState extends State<DayMateHome> {
 
   void navigateToTab(int index) {
     setState(() => selectedTab = index);
-    showMessage('Opened ${pageTitles[index]}.');
+    showMessage('Switched to ${pageTitles[index]}.');
   }
 
   // ----------------------------------------------------------
@@ -981,7 +981,6 @@ class _DayMateHomeState extends State<DayMateHome> {
             ),
             PopupMenuButton<String>(
               tooltip: 'Reminder options',
-              onOpened: () => showMessage('Reminder options opened.'),
               onSelected: (value) {
                 if (value == 'edit') {
                   addOrEditRoutine(existing: routine);

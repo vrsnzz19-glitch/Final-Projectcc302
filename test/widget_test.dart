@@ -32,7 +32,7 @@ void main() {
     await tester.tap(find.text('Habits').last);
     await tester.pump();
 
-    expect(find.text('Opened Daily Habits.'), findsOneWidget);
+    expect(find.text('Switched to Daily Habits.'), findsOneWidget);
 
     tester.view.physicalSize = const Size(390, 844);
     await tester.pump();
