@@ -1,0 +1,107 @@
+workflows:
+  ios-unsigned:
+    name: iOS Unsigned Build
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+    environment:
+      flutter: 3.44.2
+      xcode: 16.0
+      cocoapods: 1.15.2
+    scripts:
+      - name: Install Flutter dependencies
+        script: flutter pub get
+      - name: Run Flutter analyze
+        script: flutter analyze
+      - name: Run Flutter tests
+        script: flutter test
+      - name: Build iOS (unsigned)
+        script: |
+          flutter build ipa --no-codesign --release
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      email:
+        recipients:
+          - user@example.com
+        notify:
+          success: true
+          failure: true
+
+  ios-signed:
+    name: iOS Signed Build (App Store Connect / TestFlight)
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+    environment:
+      flutter: 3.44.2
+      xcode: 16.0
+      cocoapods: 1.15.2
+      groups:
+        - app_store_credentials
+        - ios_certificates
+    scripts:
+      - name: Install Flutter dependencies
+        script: flutter pub get
+      - name: Run Flutter analyze
+        script: flutter analyze
+      - name: Run Flutter tests
+        script: flutter test
+      - name: Set up keychain for signing
+        script: |
+          KEYCHAIN_PATH=$HOME/Library/Keychains/build.keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -t 3600 -l "$KEYCHAIN_PATH"
+      - name: Import certificates
+        script: |
+          echo "$CERTIFICATE_PRIVATE_KEY" | base64 --decode > certificate.p12
+          security import certificate.p12 -k "$KEYCHAIN_PATH" -P "$CERTIFICATE_PASSWORD" -A
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          rm certificate.p12
+      - name: Import provisioning profile
+        script: |
+          echo "$PROVISIONING_PROFILE" | base64 --decode > profile.mobileprovision
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+          rm profile.mobileprovision
+      - name: Configure Xcode project for signing
+        script: |
+          xcode-project use-profiles
+      - name: Build signed iOS IPA
+        script: |
+          flutter build ipa --release \
+            --build-name=1.0.0 \
+            --build-number=1 \
+            --export-options-plist=export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_API_KEY
+        api_key_id: $APP_STORE_CONNECT_API_KEY_ID
+        api_key_issuer_id: $APP_STORE_CONNECT_API_KEY_ISSUER_ID
+        submit_to_testflight: true
+        beta_groups:
+          - DayMate Testers
+      email:
+        recipients:
+          - user@example.com
+        notify:
+          success: true
+          failure: true
+
+  ios-debug:
+    name: iOS Debug Build
+    max_build_duration: 45
+    instance_type: mac_mini_m1
+    environment:
+      flutter: 3.44.2
+      xcode: 16.0
+      cocoapods: 1.15.2
+    scripts:
+      - name: Install Flutter dependencies
+        script: flutter pub get
+      - name: Build iOS Debug
+        script: flutter build ios --debug --no-codesign
+    artifacts:
+      - build/ios/iphoneos/Runner.app

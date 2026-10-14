@@ -180,17 +180,34 @@ class _DayMateHomeState extends State<DayMateHome> {
       const androidSettings = AndroidInitializationSettings(
         '@mipmap/ic_launcher',
       );
+      const iosSettings = DarwinInitializationSettings(
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
+      );
 
       await notifications.initialize(
-        settings: const InitializationSettings(android: androidSettings),
+        settings: const InitializationSettings(
+          android: androidSettings,
+          iOS: iosSettings,
+        ),
       );
 
       final android = notifications
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
           >();
+      final ios = notifications
+          .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin
+          >();
 
       await android?.requestNotificationsPermission();
+      await ios?.requestPermissions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
 
       final prefs = await SharedPreferences.getInstance();
 
@@ -431,11 +448,20 @@ class _DayMateHomeState extends State<DayMateHome> {
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
           >();
+      final ios = notifications
+          .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin
+          >();
 
-      final granted = await android?.requestNotificationsPermission();
+      final grantedAndroid = await android?.requestNotificationsPermission();
+      final grantedIOS = await ios?.requestPermissions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
 
-      if (granted == false) {
-        showMessage('Please allow DayMate notifications in Android Settings.');
+      if (grantedAndroid == false && grantedIOS == false) {
+        showMessage('Please allow DayMate notifications in your device Settings.');
         return;
       }
 
@@ -451,6 +477,11 @@ class _DayMateHomeState extends State<DayMateHome> {
                 'Notifications triggered by the DayMate notification button',
             importance: Importance.max,
             priority: Priority.high,
+          ),
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
           ),
         ),
       );
@@ -490,6 +521,11 @@ class _DayMateHomeState extends State<DayMateHome> {
               'Daily reminders for meals, sleep, and activities',
           importance: Importance.max,
           priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
         ),
       ),
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
@@ -1178,6 +1214,17 @@ class _DayMateHomeState extends State<DayMateHome> {
             ),
           ),
         ),
+        const SizedBox(height: 24),
+        Center(
+          child: Text(
+            'Created by Iverson',
+            style: TextStyle(
+              color: Colors.grey.shade400,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -1226,6 +1273,19 @@ class _DayMateHomeState extends State<DayMateHome> {
                     return routineCard(sorted[index]);
                   },
                 ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Center(
+            child: Text(
+              'Created by Iverson',
+              style: TextStyle(
+                color: Colors.grey.shade400,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -1312,8 +1372,19 @@ class _DayMateHomeState extends State<DayMateHome> {
         const SizedBox(height: 12),
         const Text(
           'Both settings create daily scheduled notifications. '
-          'Notification delivery depends on your Android settings.',
+          'Notification delivery depends on your device settings.',
           style: TextStyle(color: Colors.grey),
+        ),
+        const SizedBox(height: 24),
+        Center(
+          child: Text(
+            'Created by Iverson',
+            style: TextStyle(
+              color: Colors.grey.shade400,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ),
       ],
     );
@@ -1398,6 +1469,17 @@ class _DayMateHomeState extends State<DayMateHome> {
           icon: const Icon(Icons.refresh),
           label: const Text('Reset daily habits'),
         ),
+        const SizedBox(height: 24),
+        Center(
+          child: Text(
+            'Created by Iverson',
+            style: TextStyle(
+              color: Colors.grey.shade400,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -1477,6 +1559,43 @@ class _DayMateHomeState extends State<DayMateHome> {
             onTap: () => navigateToTab(2),
           ),
         ),
+        const SizedBox(height: 24),
+        Card(
+          color: Colors.white,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'About',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'DayMate - Your daily routine companion',
+                  style: TextStyle(color: Colors.grey),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Version 1.0.0',
+                  style: TextStyle(color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                Center(
+                  child: Text(
+                    'Created by Iverson',
+                    style: TextStyle(
+                      color: Colors.grey.shade400,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -1497,9 +1616,7 @@ class _DayMateHomeState extends State<DayMateHome> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = constraints.maxWidth > 480
-            ? 480.0
-            : constraints.maxWidth;
+        final width = constraints.maxWidth > 480 ? 480.0 : constraints.maxWidth;
 
         return ColoredBox(
           color: pageBackground,
