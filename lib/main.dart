@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
@@ -134,9 +135,8 @@ class _DayMateHomeState extends State<DayMateHome> {
 
   int selectedTab = 0;
   bool loading = true;
+
   bool apiLoading = false;
-  Timer? messageTimer;
-  OverlayEntry? messageEntry;
 
   String profileName = 'DayMate User';
   String advice = 'Stay consistent with your daily routine.';
@@ -161,9 +161,6 @@ class _DayMateHomeState extends State<DayMateHome> {
 
   @override
   void dispose() {
-    messageTimer?.cancel();
-    messageEntry?.remove();
-    messageEntry?.dispose();
     profileController.dispose();
     super.dispose();
   }
@@ -176,7 +173,11 @@ class _DayMateHomeState extends State<DayMateHome> {
     try {
       tzdata.initializeTimeZones();
       tz.setLocalLocation(tz.getLocation('Asia/Manila'));
+    } catch (_) {
+      // Time zone setup is only needed for scheduled notifications.
+    }
 
+    try {
       const androidSettings = AndroidInitializationSettings(
         '@mipmap/ic_launcher',
       );
@@ -203,12 +204,14 @@ class _DayMateHomeState extends State<DayMateHome> {
           >();
 
       await android?.requestNotificationsPermission();
-      await ios?.requestPermissions(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
+      await ios?.requestPermissions(alert: true, badge: true, sound: true);
+    } catch (e) {
+      // Notifications are not supported on this platform (e.g. Windows).
+      // The app still works; only scheduled reminders are unavailable.
+      debugPrint('Notification init skipped: $e');
+    }
 
+    try {
       final prefs = await SharedPreferences.getInstance();
 
       profileName = prefs.getString('daymate_profile') ?? 'DayMate User';
@@ -253,24 +256,20 @@ class _DayMateHomeState extends State<DayMateHome> {
       }
 
       await saveRoutines();
-
-      if (mounted) {
-        setState(() => loading = false);
-      }
-
-      // Schedule saved daily reminders.
-      for (final routine in routines) {
-        await scheduleRoutine(routine);
-      }
-
-      // Retrieve online motivational advice.
-      await fetchAdvice();
     } catch (e) {
-      if (mounted) {
-        setState(() => loading = false);
-        showMessage('App initialization error: $e');
-      }
+      debugPrint('Failed to load saved data: $e');
     }
+
+    if (mounted) {
+      setState(() => loading = false);
+    }
+
+    if (mounted) {
+      showMessage('Welcome back, $profileName!');
+    }
+
+    // Retrieve online motivational advice.
+    await fetchAdvice();
   }
 
   List<Routine> defaultRoutines() {
@@ -331,58 +330,19 @@ class _DayMateHomeState extends State<DayMateHome> {
   void showMessage(String message) {
     if (!mounted) return;
 
-    messageTimer?.cancel();
-    messageEntry?.remove();
-    messageEntry?.dispose();
-
-    final topInset = MediaQuery.viewPaddingOf(context).top;
-    messageEntry = OverlayEntry(
-      builder: (context) => Positioned(
-        top: topInset + 12,
-        left: 16,
-        right: 16,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 448),
-            child: IgnorePointer(
-              child: Material(
-                color: navy,
-                elevation: 8,
-                borderRadius: BorderRadius.circular(16),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.notifications_active,
-                        color: Colors.white,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          message,
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+          backgroundColor: navy,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
           ),
         ),
-      ),
-    );
-
-    Overlay.of(context, rootOverlay: true).insert(messageEntry!);
-    messageTimer = Timer(const Duration(seconds: 3), () {
-      messageEntry?.remove();
-      messageEntry?.dispose();
-      messageEntry = null;
-    });
+      );
   }
 
   void navigateToTab(int index) {
@@ -461,7 +421,9 @@ class _DayMateHomeState extends State<DayMateHome> {
       );
 
       if (grantedAndroid == false && grantedIOS == false) {
-        showMessage('Please allow DayMate notifications in your device Settings.');
+        showMessage(
+          'Please allow DayMate notifications in your device Settings.',
+        );
         return;
       }
 
@@ -493,44 +455,58 @@ class _DayMateHomeState extends State<DayMateHome> {
   }
 
   Future<void> scheduleRoutine(Routine routine) async {
-    final now = tz.TZDateTime.now(tz.local);
+    if (!notificationsSupported) return;
 
-    var scheduled = tz.TZDateTime(
-      tz.local,
-      now.year,
-      now.month,
-      now.day,
-      routine.hour,
-      routine.minute,
-    );
+    try {
+      final now = tz.TZDateTime.now(tz.local);
 
-    if (!scheduled.isAfter(now)) {
-      scheduled = scheduled.add(const Duration(days: 1));
+      var scheduled = tz.TZDateTime(
+        tz.local,
+        now.year,
+        now.month,
+        now.day,
+        routine.hour,
+        routine.minute,
+      );
+
+      if (!scheduled.isAfter(now)) {
+        scheduled = scheduled.add(const Duration(days: 1));
+      }
+
+      await notifications.zonedSchedule(
+        id: routine.id,
+        title: 'DayMate Reminder',
+        body: routine.title,
+        scheduledDate: scheduled,
+        notificationDetails: const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'daymate_reminders',
+            'DayMate Reminders',
+            channelDescription:
+                'Daily reminders for meals, sleep, and activities',
+            importance: Importance.max,
+            priority: Priority.high,
+          ),
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+          ),
+        ),
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        matchDateTimeComponents: DateTimeComponents.time,
+      );
+    } catch (e) {
+      debugPrint('Failed to schedule reminder: $e');
     }
+  }
 
-    await notifications.zonedSchedule(
-      id: routine.id,
-      title: 'DayMate Reminder',
-      body: routine.title,
-      scheduledDate: scheduled,
-      notificationDetails: const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'daymate_reminders',
-          'DayMate Reminders',
-          channelDescription:
-              'Daily reminders for meals, sleep, and activities',
-          importance: Importance.max,
-          priority: Priority.high,
-        ),
-        iOS: DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-        ),
-      ),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-      matchDateTimeComponents: DateTimeComponents.time,
-    );
+  /// True on platforms where local notifications actually work
+  /// (Android and iOS). On Windows/web the plugin has no implementation,
+  /// so any call would throw MissingPluginException and crash the flow.
+  bool get notificationsSupported {
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
   }
 
   // ----------------------------------------------------------
@@ -607,24 +583,31 @@ class _DayMateHomeState extends State<DayMateHome> {
                       const SizedBox(height: 16),
                       OutlinedButton.icon(
                         icon: const Icon(Icons.access_time),
-                        label: Text(selectedTime.format(context)),
+                        label: Text(selectedTime.format(dialogContext)),
                         onPressed: () async {
                           final localizations = MaterialLocalizations.of(
-                            context,
+                            dialogContext,
                           );
                           final picked = await showTimePicker(
-                            context: context,
+                            context: dialogContext,
                             initialTime: selectedTime,
                           );
 
+                          if (!mounted) return;
+                          if (!dialogContext.mounted) return;
+
                           if (picked != null) {
                             updateDialog(() => selectedTime = picked);
-                            showMessage(
-                              'Reminder time set to '
-                              '${localizations.formatTimeOfDay(picked)}.',
-                            );
+                            if (mounted) {
+                              showMessage(
+                                'Reminder time set to '
+                                '${localizations.formatTimeOfDay(picked)}.',
+                              );
+                            }
                           } else {
-                            showMessage('Time selection cancelled.');
+                            if (mounted) {
+                              showMessage('Time selection cancelled.');
+                            }
                           }
                         },
                       ),
@@ -664,7 +647,10 @@ class _DayMateHomeState extends State<DayMateHome> {
       },
     );
 
-    titleController.dispose();
+    // NOTE: titleController is intentionally not disposed right here.
+    // The dialog is still animating out after showDialog() resolves, and
+    // disposing its controller during that animation causes
+    // "A TextEditingController was used after being disposed".
 
     if (!mounted) return;
     if (result == null) {
@@ -677,7 +663,11 @@ class _DayMateHomeState extends State<DayMateHome> {
     }
 
     if (existing != null) {
-      await notifications.cancel(id: existing.id);
+      if (notificationsSupported) {
+        try {
+          await notifications.cancel(id: existing.id);
+        } catch (_) {}
+      }
 
       final index = routines.indexWhere((r) => r.id == existing.id);
 
@@ -732,7 +722,11 @@ class _DayMateHomeState extends State<DayMateHome> {
       return;
     }
 
-    await notifications.cancel(id: routine.id);
+    if (notificationsSupported) {
+      try {
+        await notifications.cancel(id: routine.id);
+      } catch (_) {}
+    }
 
     routines.removeWhere((r) => r.id == routine.id);
 
@@ -817,7 +811,11 @@ class _DayMateHomeState extends State<DayMateHome> {
     );
 
     if (existing != null) {
-      await notifications.cancel(id: existing.id);
+      if (notificationsSupported) {
+        try {
+          await notifications.cancel(id: existing.id);
+        } catch (_) {}
+      }
       routines.removeWhere((r) => r.category == category);
     }
 

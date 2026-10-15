@@ -6,7 +6,7 @@ tags:
 - git
 - pattern
 created: 2026-10-14
-updated: 2026-10-14
+updated: 2026-10-15
 filenames:
 - .refact/buddy/runtime_queue.jsonl
 - lib/main.dart
@@ -15,7 +15,7 @@ kind: pattern
 status: proposed
 superseded_by: null
 deprecated_at: null
-review_after: 2026-10-14
+review_after: 2026-10-15
 source_chat_id: null
 created_at: 2026-10-14T08:15:51.916788500+00:00
 summary: null
